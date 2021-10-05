@@ -125,6 +125,8 @@ class ChatPage extends StatelessWidget {
         actions: [
           IconButton(
             onPressed: () async {
+              // 内部で保持しているログイン情報が初期化される
+              await FirebaseAuth.instance.signOut();
               await Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) {
                 return LoginPage();
               }));
