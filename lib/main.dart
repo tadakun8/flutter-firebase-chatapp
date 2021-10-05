@@ -65,13 +65,13 @@ class _LoginPageState extends State<LoginPage> {
                 onPressed: () async {
                   try {
                     final FirebaseAuth auth = FirebaseAuth.instance;
-                    await auth.createUserWithEmailAndPassword(
+                    final result = await auth.createUserWithEmailAndPassword(
                       email: email,
                       password: password,
                     );
                     await Navigator.of(context).pushReplacement(
                       MaterialPageRoute(builder: (context) {
-                        return ChatPage();
+                        return ChatPage(result.user!);
                       }),
                     );
                   } catch (e) {
@@ -90,13 +90,13 @@ class _LoginPageState extends State<LoginPage> {
                 onPressed: () async {
                   try {
                     final FirebaseAuth auth = FirebaseAuth.instance;
-                    await auth.signInWithEmailAndPassword(
+                    final result = await auth.signInWithEmailAndPassword(
                       email: email,
                       password: password,
                     );
                     await Navigator.of(context).pushReplacement(
                       MaterialPageRoute(builder: (context) {
-                        return ChatPage();
+                        return ChatPage(result.user!);
                       }),
                     );
                   } catch (e) {
@@ -115,6 +115,8 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 class ChatPage extends StatelessWidget {
+  ChatPage(this.user);
+  final User user;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -130,6 +132,9 @@ class ChatPage extends StatelessWidget {
             icon: Icon(Icons.close),
           )
         ],
+      ),
+      body: Center(
+        child: Text("ログイン情報:${user.email}"),
       ),
       floatingActionButton: FloatingActionButton(
         child: Icon(Icons.add),
