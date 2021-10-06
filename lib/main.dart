@@ -158,6 +158,15 @@ class ChatPage extends StatelessWidget {
                       child: ListTile(
                         title: Text(document['text']),
                         subtitle: Text(document['email']),
+                        // 自分の投稿メッセージの場合は削除ボタンを表示
+                        trailing: document['email'] == user.email
+                            ? IconButton(
+                                onPressed: () async {
+                                  await FirebaseFirestore.instance.collection('posts').doc(document.id).delete();
+                                },
+                                icon: Icon(Icons.delete),
+                              )
+                            : null,
                       ),
                     );
                   }).toList(),
