@@ -64,9 +64,9 @@ class LoginPage extends ConsumerWidget {
     // メッセージ表示用
     final String infoText = watch(infoTextProvider).state;
     // 入力されたメールアドレス
-    String email = watch(emailProvider).state;
+    final String email = watch(emailProvider).state;
     // 入力されたパスワード
-    String password = watch(passwordProvider).state;
+    final String password = watch(passwordProvider).state;
     return Scaffold(
       body: Center(
         child: Container(
@@ -124,6 +124,7 @@ class LoginPage extends ConsumerWidget {
                       email: email,
                       password: password,
                     );
+                    context.read(userProvider).state = result.user;
                     await Navigator.of(context).pushReplacement(
                       MaterialPageRoute(builder: (context) {
                         return ChatPage();
