@@ -4,9 +4,45 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-void main() {
-  runApp(ChatApp());
+// ユーザ情報の受け渡しを行うためのProvider
+final userProvider = StateProvider((ref) {
+  return FirebaseAuth.instance.currentUser;
+});
+
+// エラー情報の受け渡しを行うためのProvider
+// autoDisposeをつけることで自動的に値をリセットできます
+final infoTextProvider = StateProvider.autoDispose((ref) {
+  return '';
+});
+
+// メールアドレスの受け渡しを行うためのProvider
+final emailProvider = StateProvider.autoDispose((ref) {
+  return '';
+});
+
+// パスワードの受け渡しを行うためのProvider
+final passwordProvider = StateProvider.autoDispose((ref) {
+  return '';
+});
+
+// メッセージの受け渡しを行うためのProvider
+final messageTextProvider = StateProvider.autoDispose((ref) {
+  return '';
+});
+
+// StreamProviderを使うことでStreamも扱うことができる
+final postsQueryProvider = StreamProvider.autoDispose((ref) {
+  return FirebaseFirestore.instance.collection('posts').orderBy('date').snapshots();
+});
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(ProviderScope(
+    child: ChatApp(),
+  ));
 }
 
 class ChatApp extends StatelessWidget {
@@ -22,20 +58,15 @@ class ChatApp extends StatelessWidget {
   }
 }
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends ConsumerWidget {
   @override
-  _LoginPageState createState() => _LoginPageState();
-}
-
-class _LoginPageState extends State<LoginPage> {
-  // メッセージ表示用
-  String infoText = '';
-  // 入力されたメールアドレス
-  String email = '';
-  // 入力されたパスワード
-  String password = '';
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, ScopedReader watch) {
+    // メッセージ表示用
+    final String infoText = watch(infoTextProvider).state;
+    // 入力されたメールアドレス
+    String email = watch(emailProvider).state;
+    // 入力されたパスワード
+    String password = watch(passwordProvider).state;
     return Scaffold(
       body: Center(
         child: Container(
@@ -44,17 +75,13 @@ class _LoginPageState extends State<LoginPage> {
             TextFormField(
               decoration: InputDecoration(labelText: "メールアドレス"),
               onChanged: (String value) {
-                setState(() {
-                  email = value;
-                });
+                context.read(emailProvider).state = value;
               },
             ),
             TextFormField(
               decoration: InputDecoration(labelText: "パスワード"),
               onChanged: (String value) {
-                setState(() {
-                  password = value;
-                });
+                context.read(passwordProvider).state = value;
               },
             ),
             Container(
@@ -72,15 +99,15 @@ class _LoginPageState extends State<LoginPage> {
                       email: email,
                       password: password,
                     );
+                    context.read(userProvider).state = result.user;
+
                     await Navigator.of(context).pushReplacement(
                       MaterialPageRoute(builder: (context) {
-                        return ChatPage(result.user!);
+                        return ChatPage();
                       }),
                     );
                   } catch (e) {
-                    setState(() {
-                      infoText = e.toString();
-                    });
+                    context.read(infoTextProvider).state = "登録に失敗しました${e.toString()}";
                   }
                 },
               ),
@@ -99,13 +126,11 @@ class _LoginPageState extends State<LoginPage> {
                     );
                     await Navigator.of(context).pushReplacement(
                       MaterialPageRoute(builder: (context) {
-                        return ChatPage(result.user!);
+                        return ChatPage();
                       }),
                     );
                   } catch (e) {
-                    setState(() {
-                      infoText = "ログインに失敗しました:${e.toString()}";
-                    });
+                    context.read(infoTextProvider).state = "ログインに失敗しました${e.toString()}";
                   }
                 },
               ),
@@ -117,11 +142,12 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-class ChatPage extends StatelessWidget {
-  ChatPage(this.user);
-  final User user;
+class ChatPage extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, ScopedReader watch) {
+    //Providerから値を受け取る
+    final User user = watch(userProvider).state!;
+    final AsyncValue<QuerySnapshot> asyncPostsQuery = watch(postsQueryProvider);
     return Scaffold(
       appBar: AppBar(
         title: Text('チャット'),
@@ -138,53 +164,59 @@ class ChatPage extends StatelessWidget {
           )
         ],
       ),
-      body: Column(children: [
-        Container(
-          padding: EdgeInsets.all(8),
-          child: Text("ログイン情報:${user.email}"),
-        ),
-        Expanded(
-          // FutureBuilder
-          // 非同期処理の結果を元にWidgetを作れる
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('posts').orderBy('date').snapshots(),
-            builder: (context, snapshot) {
-              // データが取得できた場合
-              if (snapshot.hasData) {
-                final List<DocumentSnapshot> documents = snapshot.data!.docs;
+      body: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.all(8),
+            child: Text('ログイン情報：${user.email}'),
+          ),
+          Expanded(
+            // StreamProviderから受け取った値は .when() で状態に応じて出し分けできる
+            child: asyncPostsQuery.when(
+              // 値が取得できたとき
+              data: (QuerySnapshot query) {
                 return ListView(
-                  children: documents.map((document) {
+                  children: query.docs.map((document) {
                     return Card(
                       child: ListTile(
                         title: Text(document['text']),
                         subtitle: Text(document['email']),
-                        // 自分の投稿メッセージの場合は削除ボタンを表示
                         trailing: document['email'] == user.email
                             ? IconButton(
+                                icon: Icon(Icons.delete),
                                 onPressed: () async {
+                                  // 投稿メッセージのドキュメントを削除
                                   await FirebaseFirestore.instance.collection('posts').doc(document.id).delete();
                                 },
-                                icon: Icon(Icons.delete),
                               )
                             : null,
                       ),
                     );
                   }).toList(),
                 );
-              }
-              return Center(
-                child: Text('読み込み中'),
-              );
-            },
+              },
+              // 値が読込中のとき
+              loading: () {
+                return Center(
+                  child: Text('読込中...'),
+                );
+              },
+              // 値の取得に失敗したとき
+              error: (e, stackTrace) {
+                return Center(
+                  child: Text(e.toString()),
+                );
+              },
+            ),
           ),
-        )
-      ]),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         child: Icon(Icons.add),
         onPressed: () async {
           await Navigator.of(context).push(
             MaterialPageRoute(builder: (context) {
-              return AddPostPage(user);
+              return AddPostPage();
             }),
           );
         },
@@ -193,20 +225,11 @@ class ChatPage extends StatelessWidget {
   }
 }
 
-class AddPostPage extends StatefulWidget {
-  // 引数からユーザ情報を受け取る
-  AddPostPage(this.user);
-  // ユーザ情報
-  final User user;
+class AddPostPage extends ConsumerWidget {
   @override
-  _AddPostPageState createState() => _AddPostPageState();
-}
-
-class _AddPostPageState extends State<AddPostPage> {
-  // 入力した投稿メッセージ
-  String messageText = '';
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, ScopedReader watch) {
+    final user = watch(userProvider).state!;
+    final messageText = watch(messageTextProvider).state;
     return Scaffold(
       appBar: AppBar(
         title: Text('チャット投稿'),
@@ -224,7 +247,7 @@ class _AddPostPageState extends State<AddPostPage> {
                 // 最大3行
                 maxLines: 3,
                 onChanged: (String value) {
-                  messageText = value;
+                  context.read(messageTextProvider).state = value;
                 },
               ),
               const SizedBox(
@@ -236,7 +259,7 @@ class _AddPostPageState extends State<AddPostPage> {
                   child: Text('投稿'),
                   onPressed: () async {
                     final date = DateTime.now().toLocal().toIso8601String();
-                    final email = widget.user.email;
+                    final email = user.email;
                     await FirebaseFirestore.instance.collection('posts').doc().set({
                       'text': messageText,
                       'email': email,
